@@ -1,0 +1,13 @@
+[
+  {
+    "received_at": "2026-06-10T23:31:23.153856",
+    "data": {
+      "action": "BUY",
+      "ticker": "BTCUSDT",
+      "price": "67450.50",
+      "timeframe": "1h",
+      "strategy": "MA Cross",
+      "comment": "Golden cross detected"
+    }
+  }
+]

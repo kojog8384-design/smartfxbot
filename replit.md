@@ -1,36 +1,39 @@
-# [Project name]
+# TradingView Telegram Signal Bot
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A Python Telegram bot that receives TradingView webhook alerts and forwards them as formatted messages to a Telegram chat/channel. Supports manual commands for control and signal history.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- `python artifacts/telegram-bot/bot.py` — run the bot (starts both Flask webhook server + Telegram polling)
+- Workflow: **Telegram Trading Bot** — auto-managed, runs on port 6000
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- Python 3
+- `python-telegram-bot` — Telegram Bot API polling
+- `flask` — webhook HTTP server
+- Signal history stored as JSON in `artifacts/telegram-bot/data/signals.json`
+- State (active/paused) stored in `artifacts/telegram-bot/data/state.json`
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/telegram-bot/bot.py` — main bot file (all logic in one file)
+- `artifacts/telegram-bot/data/signals.json` — persisted signal log (last 500)
+- `artifacts/telegram-bot/data/state.json` — active/paused state
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Bot runs both Flask (webhook receiver) and Telegram polling in a single process using threads
+- Signal forwarding uses a fresh asyncio event loop per request (avoids event loop conflicts with python-telegram-bot's internal loop)
+- Signals are stored as raw JSON with a received_at timestamp — last 500 kept, oldest dropped
+- Bot active/paused state persists to disk so it survives restarts
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- Receives TradingView alerts via HTTP webhook POST to `/webhook/tradingview`
+- Formats and forwards signals to a configured Telegram chat with emoji, price info, timeframe, strategy name
+- Telegram commands: `/start`, `/stop`, `/status`, `/history`, `/clear`, `/help`
+- Health endpoint at `/health`, signal log at `/signals`
 
 ## User preferences
 
@@ -38,7 +41,32 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Port 6000 is used for the webhook Flask server (8080 is taken by mockup-sandbox)
+- The webhook URL for TradingView must use the public Replit domain, not localhost
+- `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` must be set as Replit secrets
+
+## Secrets required
+
+- `TELEGRAM_BOT_TOKEN` — from @BotFather on Telegram
+- `TELEGRAM_CHAT_ID` — the chat/group/channel ID to send signals to
+
+## TradingView Setup
+
+Webhook URL: `https://<your-repl-domain>/webhook/tradingview`
+
+Alert message JSON template:
+```json
+{"action":"{{strategy.order.action}}","ticker":"{{ticker}}","price":"{{close}}","timeframe":"{{interval}}","strategy":"Your Strategy Name","comment":"{{strategy.order.comment}}"}
+```
+
+## Telegram Commands
+
+- `/start` — Activate bot & show webhook URL
+- `/stop` — Pause signal forwarding
+- `/status` — Show status and signal count
+- `/history` — Last 10 signals
+- `/clear` — Clear signal history
+- `/help` — Show help
 
 ## Pointers
 
