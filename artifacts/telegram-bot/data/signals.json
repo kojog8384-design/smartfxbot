@@ -145,5 +145,62 @@
       "fvg_high": "3450",
       "fvg_low": "3410"
     }
+  },
+  {
+    "received_at": "2026-06-11T01:28:43.710783+00:00",
+    "data": {
+      "action": "BUY",
+      "ticker": "XAUUSD",
+      "price": "2345.50",
+      "strategy": "Gold SMC Breakout",
+      "comment": "CHoCH confirmed, OB retest on H4",
+      "timeframe": "4H",
+      "exchange": "OANDA",
+      "swing_high": "2380",
+      "swing_low": "2310"
+    }
+  },
+  {
+    "received_at": "2026-06-11T01:28:44.160913+00:00",
+    "data": {
+      "action": "SELL",
+      "ticker": "EURUSD",
+      "price": "1.08456",
+      "strategy": "FVG Rejection",
+      "comment": "Bearish FVG fill, liquidity grab above 1.086",
+      "timeframe": "1H",
+      "exchange": "OANDA",
+      "swing_high": "1.09200",
+      "swing_low": "1.07800"
+    }
+  },
+  {
+    "received_at": "2026-06-11T01:28:44.358038+00:00",
+    "data": {
+      "action": "BUY",
+      "ticker": "GBPUSD",
+      "price": "1.26750",
+      "strategy": "Order Block Retest",
+      "comment": "Bullish OB holding, BOS confirmed",
+      "timeframe": "4H",
+      "exchange": "OANDA",
+      "swing_high": "1.28000",
+      "swing_low": "1.25500",
+      "ob_high": "1.26900",
+      "ob_low": "1.26600"
+    }
+  },
+  {
+    "received_at": "2026-06-11T01:28:44.562540+00:00",
+    "data": {
+      "action": "BUY",
+      "ticker": "DOGEUSDT",
+      "price": "0.15",
+      "strategy": "Moon",
+      "comment": "Much wow",
+      "timeframe": "1H",
+      "swing_high": "0.16",
+      "swing_low": "0.14"
+    }
   }
 ]

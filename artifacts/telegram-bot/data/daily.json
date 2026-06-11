@@ -1,14 +1,20 @@
 {
   "date": "2026-06-11",
-  "sent_count": 2,
-  "rejected_count": 2,
+  "sent_count": 5,
+  "rejected_count": 3,
   "coins_today": {
     "BTCUSDT": 1,
-    "ETHUSDT": 1
+    "ETHUSDT": 1,
+    "XAUUSD": 1,
+    "EURUSD": 1,
+    "GBPUSD": 1
   },
   "last_sent_at": {
     "BTCUSDT": "2026-06-11T01:06:45.344809+00:00",
-    "ETHUSDT": "2026-06-11T01:06:45.552124+00:00"
+    "ETHUSDT": "2026-06-11T01:06:45.552124+00:00",
+    "XAUUSD": "2026-06-11T01:28:44.102186+00:00",
+    "EURUSD": "2026-06-11T01:28:44.311374+00:00",
+    "GBPUSD": "2026-06-11T01:28:44.515658+00:00"
   },
   "sent_log": [
     {
@@ -22,6 +28,24 @@
       "ticker": "ETHUSDT",
       "action": "SELL",
       "score": 93
+    },
+    {
+      "time": "2026-06-11T01:28:44.102186+00:00",
+      "ticker": "XAUUSD",
+      "action": "BUY",
+      "score": 86
+    },
+    {
+      "time": "2026-06-11T01:28:44.311374+00:00",
+      "ticker": "EURUSD",
+      "action": "SELL",
+      "score": 86
+    },
+    {
+      "time": "2026-06-11T01:28:44.515658+00:00",
+      "ticker": "GBPUSD",
+      "action": "BUY",
+      "score": 96
     }
   ]
 }
