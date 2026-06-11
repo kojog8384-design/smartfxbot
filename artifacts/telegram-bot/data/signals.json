@@ -40,5 +40,57 @@
       "timeframe": "15m",
       "strategy": "RSI Divergence"
     }
+  },
+  {
+    "received_at": "2026-06-11T00:46:57.588858",
+    "data": {
+      "action": "BUY",
+      "ticker": "BTCUSDT",
+      "price": "67450.50",
+      "timeframe": "1H",
+      "strategy": "MA Cross",
+      "comment": "Golden cross detected",
+      "exchange": "Binance",
+      "high": "68200",
+      "low": "65800"
+    }
+  },
+  {
+    "received_at": "2026-06-11T00:46:57.634480",
+    "data": {
+      "action": "SELL",
+      "ticker": "ETHUSDT",
+      "price": "3421.10",
+      "timeframe": "15",
+      "strategy": "RSI Divergence",
+      "swing_high": "3600",
+      "swing_low": "3200"
+    }
+  },
+  {
+    "received_at": "2026-06-11T00:47:17.217714",
+    "data": {
+      "action": "BUY",
+      "ticker": "BTCUSDT",
+      "price": "67450.50",
+      "timeframe": "1H",
+      "strategy": "MA Cross",
+      "comment": "Golden cross detected",
+      "exchange": "Binance",
+      "high": "68200",
+      "low": "65800"
+    }
+  },
+  {
+    "received_at": "2026-06-11T00:47:17.431498",
+    "data": {
+      "action": "SELL",
+      "ticker": "ETHUSDT",
+      "price": "3421.10",
+      "timeframe": "15",
+      "strategy": "RSI Divergence",
+      "swing_high": "3600",
+      "swing_low": "3200"
+    }
   }
 ]
