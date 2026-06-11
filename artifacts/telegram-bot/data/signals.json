@@ -92,5 +92,58 @@
       "swing_high": "3600",
       "swing_low": "3200"
     }
+  },
+  {
+    "received_at": "2026-06-11T01:06:44.839672+00:00",
+    "data": {
+      "action": "BUY",
+      "ticker": "BTCUSDT",
+      "price": "67450"
+    }
+  },
+  {
+    "received_at": "2026-06-11T01:06:44.887820+00:00",
+    "data": {
+      "action": "BUY",
+      "ticker": "DOGEUSDT",
+      "price": "0.15",
+      "strategy": "MA Cross",
+      "comment": "Strong setup",
+      "timeframe": "1H",
+      "swing_high": "0.16",
+      "swing_low": "0.14"
+    }
+  },
+  {
+    "received_at": "2026-06-11T01:06:44.931835+00:00",
+    "data": {
+      "action": "BUY",
+      "ticker": "BTCUSDT",
+      "price": "67450",
+      "strategy": "SMC Confluence",
+      "comment": "BOS confirmed + OB retest",
+      "timeframe": "4H",
+      "exchange": "Binance",
+      "swing_high": "70000",
+      "swing_low": "64000",
+      "ob_high": "67800",
+      "ob_low": "67100"
+    }
+  },
+  {
+    "received_at": "2026-06-11T01:06:45.389742+00:00",
+    "data": {
+      "action": "SELL",
+      "ticker": "ETHUSDT",
+      "price": "3421",
+      "strategy": "RSI+FVG",
+      "comment": "FVG fill + bearish OB",
+      "timeframe": "1H",
+      "exchange": "Binance",
+      "swing_high": "3600",
+      "swing_low": "3200",
+      "fvg_high": "3450",
+      "fvg_low": "3410"
+    }
   }
 ]
