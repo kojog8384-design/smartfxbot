@@ -24,12 +24,19 @@ DATA_DIR = Path(__file__).parent / "data"
 DATA_DIR.mkdir(exist_ok=True)
 SIGNALS_FILE = DATA_DIR / "signals.json"
 STATE_FILE = DATA_DIR / "state.json"
+LEVELS_FILE = DATA_DIR / "levels.json"
 
 flask_app = Flask(__name__)
-
-# Shared reference to the main event loop — set before Flask starts
 _main_loop: asyncio.AbstractEventLoop = None
 _telegram_app: Application = None
+
+# Default auto-calc percentages (can be tuned here)
+AUTO_CALC = {
+    "sl_pct":  2.0,
+    "tp1_pct": 2.0,
+    "tp2_pct": 3.5,
+    "tp3_pct": 5.5,
+}
 
 
 # ── Persistence helpers ────────────────────────────────────────────────────────
@@ -71,60 +78,160 @@ def set_bot_active(value: bool):
     save_state({"active": value})
 
 
+def load_levels() -> dict:
+    """Returns dict of ticker -> {entry, sl, tp1, tp2, tp3}."""
+    if LEVELS_FILE.exists():
+        try:
+            return json.loads(LEVELS_FILE.read_text())
+        except Exception:
+            return {}
+    return {}
+
+
+def save_levels(levels: dict):
+    LEVELS_FILE.write_text(json.dumps(levels, indent=2))
+
+
+# ── Level calculation ──────────────────────────────────────────────────────────
+
+def _pct_change(base: float, pct: float, direction: float) -> float:
+    """direction: +1 for up, -1 for down."""
+    return base * (1 + direction * pct / 100)
+
+
+def _fmt_price(value: float) -> str:
+    """Format a price value cleanly."""
+    if value >= 1000:
+        return f"{value:,.2f}"
+    elif value >= 1:
+        return f"{value:.4f}"
+    else:
+        return f"{value:.6f}"
+
+
+def _pct_diff(entry: float, target: float) -> str:
+    diff = (target - entry) / entry * 100
+    sign = "+" if diff >= 0 else ""
+    return f"{sign}{diff:.1f}%"
+
+
+def compute_levels(action: str, price: float, ticker: str, override_data: dict) -> dict:
+    """
+    Return a dict with entry, sl, tp1, tp2, tp3.
+    Priority: webhook payload fields > stored manual levels > auto-calc.
+    """
+    stored = load_levels().get(ticker.upper(), {})
+
+    # Start with auto-calc
+    is_long = action in ("BUY", "LONG")
+    is_short = action in ("SELL", "SHORT")
+
+    if is_long:
+        sl_dir, tp_dir = -1, +1
+    elif is_short:
+        sl_dir, tp_dir = +1, -1
+    else:
+        sl_dir, tp_dir = -1, +1  # neutral default
+
+    auto = {
+        "entry": price,
+        "sl":    _pct_change(price, AUTO_CALC["sl_pct"],  sl_dir),
+        "tp1":   _pct_change(price, AUTO_CALC["tp1_pct"], tp_dir),
+        "tp2":   _pct_change(price, AUTO_CALC["tp2_pct"], tp_dir),
+        "tp3":   _pct_change(price, AUTO_CALC["tp3_pct"], tp_dir),
+    }
+
+    # Merge: stored manual levels override auto
+    merged = {**auto, **{k: float(v) for k, v in stored.items() if v is not None}}
+
+    # Webhook payload fields take highest priority
+    for key in ("entry", "sl", "tp1", "tp2", "tp3"):
+        if key in override_data:
+            try:
+                merged[key] = float(override_data[key])
+            except (ValueError, TypeError):
+                pass
+
+    return merged
+
+
 # ── Message formatting ─────────────────────────────────────────────────────────
 
 def format_signal_message(data: dict) -> str:
     action = data.get("action", "").upper()
     ticker = data.get("ticker", data.get("symbol", "UNKNOWN")).upper()
-    price = data.get("price", data.get("close", "N/A"))
     timeframe = data.get("timeframe", data.get("interval", ""))
     strategy = data.get("strategy", data.get("strategy_name", ""))
     comment = data.get("comment", data.get("message", ""))
     exchange = data.get("exchange", "")
     volume = data.get("volume", "")
-    high = data.get("high", "")
-    low = data.get("low", "")
-    open_price = data.get("open", "")
+
+    # Parse current price
+    raw_price = data.get("price", data.get("close", None))
+    try:
+        price = float(raw_price)
+    except (TypeError, ValueError):
+        price = None
 
     if action in ("BUY", "LONG"):
-        emoji, direction = "🟢", "BUY / LONG"
+        header_emoji, direction = "🟢", "BUY / LONG"
     elif action in ("SELL", "SHORT"):
-        emoji, direction = "🔴", "SELL / SHORT"
+        header_emoji, direction = "🔴", "SELL / SHORT"
     elif action in ("CLOSE", "EXIT"):
-        emoji, direction = "⚪", "CLOSE / EXIT"
+        header_emoji, direction = "⚪", "CLOSE / EXIT"
     else:
-        emoji, direction = "📊", action or "SIGNAL"
+        header_emoji, direction = "📊", action or "SIGNAL"
 
-    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
-    lines = [f"{emoji} <b>{direction}</b> — <code>{ticker}</code>", ""]
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
-    if price and price != "N/A":
-        lines.append(f"💰 <b>Price:</b> <code>{price}</code>")
-    if open_price:
-        lines.append(f"📂 <b>Open:</b> <code>{open_price}</code>")
-    if high:
-        lines.append(f"📈 <b>High:</b> <code>{high}</code>")
-    if low:
-        lines.append(f"📉 <b>Low:</b> <code>{low}</code>")
-    if volume:
-        lines.append(f"📦 <b>Volume:</b> <code>{volume}</code>")
+    lines = [
+        f"{header_emoji} <b>{direction}</b>",
+        f"📌 <b>Ticker:</b> <code>{ticker}</code>",
+    ]
+
     if exchange:
         lines.append(f"🏦 <b>Exchange:</b> {exchange}")
     if timeframe:
         lines.append(f"⏱ <b>Timeframe:</b> {timeframe}")
     if strategy:
         lines.append(f"🧠 <b>Strategy:</b> {strategy}")
+
+    lines.append("")
+
+    # ── Levels block ──
+    if price is not None and action in ("BUY", "LONG", "SELL", "SHORT"):
+        lvl = compute_levels(action, price, ticker, data)
+
+        entry = lvl["entry"]
+        sl    = lvl["sl"]
+        tp1   = lvl["tp1"]
+        tp2   = lvl["tp2"]
+        tp3   = lvl["tp3"]
+
+        lines += [
+            "📊 <b>LEVELS</b>",
+            f"┣ 🎯 <b>Entry:</b>     <code>{_fmt_price(entry)}</code>",
+            f"┣ 🛑 <b>Stop Loss:</b>  <code>{_fmt_price(sl)}</code>  <i>({_pct_diff(entry, sl)})</i>",
+            f"┣ 💚 <b>TP1:</b>        <code>{_fmt_price(tp1)}</code>  <i>({_pct_diff(entry, tp1)})</i>",
+            f"┣ 💛 <b>TP2:</b>        <code>{_fmt_price(tp2)}</code>  <i>({_pct_diff(entry, tp2)})</i>",
+            f"┗ 🏆 <b>TP3:</b>        <code>{_fmt_price(tp3)}</code>  <i>({_pct_diff(entry, tp3)})</i>",
+            "",
+        ]
+    elif price is not None:
+        lines.append(f"💰 <b>Price:</b> <code>{_fmt_price(price)}</code>\n")
+
+    if volume:
+        lines.append(f"📦 <b>Volume:</b> <code>{volume}</code>")
     if comment:
         lines.append(f"💬 <b>Note:</b> {comment}")
 
-    lines += ["", f"🕐 {now}"]
+    lines.append(f"\n🕐 {now}")
     return "\n".join(lines)
 
 
 # ── Thread-safe Telegram send ──────────────────────────────────────────────────
 
 async def _send_message_async(text: str):
-    """Coroutine that runs inside the main event loop."""
     await _telegram_app.bot.send_message(
         chat_id=CHAT_ID,
         text=text,
@@ -133,11 +240,10 @@ async def _send_message_async(text: str):
 
 
 def send_telegram_message_sync(text: str):
-    """Called from Flask's thread — submits to the main loop and waits."""
     if _main_loop is None or not _main_loop.is_running():
         raise RuntimeError("Main event loop is not running")
     future = asyncio.run_coroutine_threadsafe(_send_message_async(text), _main_loop)
-    future.result(timeout=15)  # block Flask thread until sent (or timeout)
+    future.result(timeout=15)
 
 
 # ── Flask routes ───────────────────────────────────────────────────────────────
@@ -210,11 +316,17 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         '<code>{"action":"{{strategy.order.action}}","ticker":"{{ticker}}",'
         '"price":"{{close}}","timeframe":"{{interval}}","strategy":"My Strategy",'
         '"comment":"{{strategy.order.comment}}"}</code>\n\n'
+        "<b>You can also pass levels directly from TradingView:</b>\n"
+        '<code>{"action":"BUY","ticker":"BTCUSDT","price":"{{close}}",'
+        '"sl":"{{plot_0}}","tp1":"{{plot_1}}","tp2":"{{plot_2}}","tp3":"{{plot_3}}"}</code>\n\n'
         "<b>Commands:</b>\n"
         "/start — Activate &amp; show webhook URL\n"
         "/stop — Pause signal forwarding\n"
         "/status — Show current status\n"
         "/history — Last 10 signals\n"
+        "/setlevels — Set manual levels for a ticker\n"
+        "/clearlevels — Remove manual levels for a ticker\n"
+        "/levels — Show all configured manual levels\n"
         "/clear — Clear signal history\n"
         "/help — Show this message"
     )
@@ -237,7 +349,11 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     last_str = last["received_at"] if last else "No signals yet"
     if last:
         d = last["data"]
-        last_signal = f"{d.get('action','?').upper()} {d.get('ticker', d.get('symbol','?')).upper()} @ {d.get('price', d.get('close','?'))}"
+        last_signal = (
+            f"{d.get('action','?').upper()} "
+            f"{d.get('ticker', d.get('symbol','?')).upper()} "
+            f"@ {d.get('price', d.get('close','?'))}"
+        )
     else:
         last_signal = "—"
 
@@ -279,6 +395,111 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await cmd_start(update, context)
 
 
+async def cmd_setlevels(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Usage: /setlevels BTCUSDT 67500 65000 69000 71000 75000
+           (ticker entry sl tp1 tp2 tp3)
+    """
+    usage = (
+        "⚙️ <b>Usage:</b>\n"
+        "<code>/setlevels TICKER entry sl tp1 tp2 tp3</code>\n\n"
+        "<b>Example:</b>\n"
+        "<code>/setlevels BTCUSDT 67500 65000 69000 71000 75000</code>\n\n"
+        "Set any value to <code>0</code> or <code>-</code> to keep auto-calculated for that field.\n"
+        "Use /clearlevels TICKER to remove all manual levels."
+    )
+
+    args = context.args
+    if not args or len(args) < 6:
+        await update.message.reply_text(usage, parse_mode=ParseMode.HTML)
+        return
+
+    ticker = args[0].upper()
+    keys = ["entry", "sl", "tp1", "tp2", "tp3"]
+    levels = load_levels()
+    entry = levels.get(ticker, {})
+
+    for i, key in enumerate(keys):
+        raw = args[i + 1]
+        if raw in ("0", "-", "auto"):
+            entry.pop(key, None)  # remove so auto-calc is used
+        else:
+            try:
+                entry[key] = float(raw)
+            except ValueError:
+                await update.message.reply_text(
+                    f"❌ Invalid value for <b>{key}</b>: <code>{raw}</code>",
+                    parse_mode=ParseMode.HTML,
+                )
+                return
+
+    levels[ticker] = entry
+    save_levels(levels)
+
+    lines = [f"✅ <b>Manual levels saved for {ticker}:</b>\n"]
+    label_map = {"entry": "🎯 Entry", "sl": "🛑 Stop Loss", "tp1": "💚 TP1", "tp2": "💛 TP2", "tp3": "🏆 TP3"}
+    for key in keys:
+        val = entry.get(key)
+        label = label_map[key]
+        if val is not None:
+            lines.append(f"{label}: <code>{_fmt_price(val)}</code>")
+        else:
+            lines.append(f"{label}: <i>auto-calculated</i>")
+
+    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
+
+
+async def cmd_clearlevels(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Usage: /clearlevels BTCUSDT"""
+    args = context.args
+    if not args:
+        await update.message.reply_text(
+            "⚙️ <b>Usage:</b> <code>/clearlevels TICKER</code>\n"
+            "Example: <code>/clearlevels BTCUSDT</code>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    ticker = args[0].upper()
+    levels = load_levels()
+    if ticker in levels:
+        del levels[ticker]
+        save_levels(levels)
+        await update.message.reply_text(
+            f"🗑 Manual levels cleared for <b>{ticker}</b>. Levels will now be auto-calculated.",
+            parse_mode=ParseMode.HTML,
+        )
+    else:
+        await update.message.reply_text(
+            f"ℹ️ No manual levels were set for <b>{ticker}</b>.",
+            parse_mode=ParseMode.HTML,
+        )
+
+
+async def cmd_levels(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show all stored manual levels."""
+    levels = load_levels()
+    if not levels:
+        await update.message.reply_text(
+            "📭 No manual levels configured.\n\n"
+            "All tickers use auto-calculated levels.\n"
+            "Use /setlevels to configure a ticker.",
+        )
+        return
+
+    label_map = {"entry": "🎯 Entry", "sl": "🛑 SL", "tp1": "💚 TP1", "tp2": "💛 TP2", "tp3": "🏆 TP3"}
+    lines = ["📋 <b>Configured Manual Levels:</b>\n"]
+    for ticker, vals in levels.items():
+        lines.append(f"<b>{ticker}</b>")
+        for key in ["entry", "sl", "tp1", "tp2", "tp3"]:
+            if key in vals:
+                lines.append(f"  {label_map[key]}: <code>{_fmt_price(vals[key])}</code>")
+        lines.append("")
+
+    lines.append("<i>Use /clearlevels TICKER to reset to auto-calc.</i>")
+    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
+
+
 # ── Main async entry point ─────────────────────────────────────────────────────
 
 async def main():
@@ -293,8 +514,10 @@ async def main():
     _telegram_app.add_handler(CommandHandler("history", cmd_history))
     _telegram_app.add_handler(CommandHandler("clear", cmd_clear))
     _telegram_app.add_handler(CommandHandler("help", cmd_help))
+    _telegram_app.add_handler(CommandHandler("setlevels", cmd_setlevels))
+    _telegram_app.add_handler(CommandHandler("clearlevels", cmd_clearlevels))
+    _telegram_app.add_handler(CommandHandler("levels", cmd_levels))
 
-    # Start Flask in a background thread (daemon so it dies with main process)
     flask_thread = threading.Thread(
         target=lambda: flask_app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False),
         daemon=True,
@@ -303,7 +526,6 @@ async def main():
     flask_thread.start()
     logger.info(f"Flask webhook server started on port {PORT}")
 
-    # Run Telegram polling inside the same event loop
     logger.info("Starting Telegram bot polling...")
     async with _telegram_app:
         await _telegram_app.initialize()
@@ -314,7 +536,6 @@ async def main():
         )
         logger.info("Bot is live — polling for Telegram updates")
 
-        # Keep running forever
         stop_event = asyncio.Event()
         try:
             await stop_event.wait()

@@ -19,5 +19,26 @@
       "timeframe": "15m",
       "strategy": "RSI Divergence"
     }
+  },
+  {
+    "received_at": "2026-06-11T00:32:24.783181",
+    "data": {
+      "action": "BUY",
+      "ticker": "BTCUSDT",
+      "price": "67450.50",
+      "timeframe": "1h",
+      "strategy": "MA Cross",
+      "comment": "Golden cross detected"
+    }
+  },
+  {
+    "received_at": "2026-06-11T00:32:25.267109",
+    "data": {
+      "action": "SELL",
+      "ticker": "ETHUSDT",
+      "price": "3421.10",
+      "timeframe": "15m",
+      "strategy": "RSI Divergence"
+    }
   }
 ]
