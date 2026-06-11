@@ -9,5 +9,15 @@
       "strategy": "MA Cross",
       "comment": "Golden cross detected"
     }
+  },
+  {
+    "received_at": "2026-06-11T00:18:26.768891",
+    "data": {
+      "action": "SELL",
+      "ticker": "ETHUSDT",
+      "price": "3421.10",
+      "timeframe": "15m",
+      "strategy": "RSI Divergence"
+    }
   }
 ]

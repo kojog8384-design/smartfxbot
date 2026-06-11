@@ -2,6 +2,7 @@ import os
 import json
 import logging
 import asyncio
+import threading
 from datetime import datetime
 from pathlib import Path
 from flask import Flask, request, jsonify
@@ -25,9 +26,13 @@ SIGNALS_FILE = DATA_DIR / "signals.json"
 STATE_FILE = DATA_DIR / "state.json"
 
 flask_app = Flask(__name__)
-telegram_app: Application = None
-bot_active = True
 
+# Shared reference to the main event loop — set before Flask starts
+_main_loop: asyncio.AbstractEventLoop = None
+_telegram_app: Application = None
+
+
+# ── Persistence helpers ────────────────────────────────────────────────────────
 
 def load_signals() -> list:
     if SIGNALS_FILE.exists():
@@ -66,6 +71,8 @@ def set_bot_active(value: bool):
     save_state({"active": value})
 
 
+# ── Message formatting ─────────────────────────────────────────────────────────
+
 def format_signal_message(data: dict) -> str:
     action = data.get("action", "").upper()
     ticker = data.get("ticker", data.get("symbol", "UNKNOWN")).upper()
@@ -80,24 +87,16 @@ def format_signal_message(data: dict) -> str:
     open_price = data.get("open", "")
 
     if action in ("BUY", "LONG"):
-        emoji = "🟢"
-        direction = "BUY / LONG"
+        emoji, direction = "🟢", "BUY / LONG"
     elif action in ("SELL", "SHORT"):
-        emoji = "🔴"
-        direction = "SELL / SHORT"
+        emoji, direction = "🔴", "SELL / SHORT"
     elif action in ("CLOSE", "EXIT"):
-        emoji = "⚪"
-        direction = "CLOSE / EXIT"
+        emoji, direction = "⚪", "CLOSE / EXIT"
     else:
-        emoji = "📊"
-        direction = action or "SIGNAL"
+        emoji, direction = "📊", action or "SIGNAL"
 
     now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
-
-    lines = [
-        f"{emoji} <b>{direction}</b> — <code>{ticker}</code>",
-        "",
-    ]
+    lines = [f"{emoji} <b>{direction}</b> — <code>{ticker}</code>", ""]
 
     if price and price != "N/A":
         lines.append(f"💰 <b>Price:</b> <code>{price}</code>")
@@ -122,14 +121,26 @@ def format_signal_message(data: dict) -> str:
     return "\n".join(lines)
 
 
-async def send_telegram_message(text: str):
-    bot = Bot(token=BOT_TOKEN)
-    await bot.send_message(
+# ── Thread-safe Telegram send ──────────────────────────────────────────────────
+
+async def _send_message_async(text: str):
+    """Coroutine that runs inside the main event loop."""
+    await _telegram_app.bot.send_message(
         chat_id=CHAT_ID,
         text=text,
         parse_mode=ParseMode.HTML,
     )
 
+
+def send_telegram_message_sync(text: str):
+    """Called from Flask's thread — submits to the main loop and waits."""
+    if _main_loop is None or not _main_loop.is_running():
+        raise RuntimeError("Main event loop is not running")
+    future = asyncio.run_coroutine_threadsafe(_send_message_async(text), _main_loop)
+    future.result(timeout=15)  # block Flask thread until sent (or timeout)
+
+
+# ── Flask routes ───────────────────────────────────────────────────────────────
 
 @flask_app.route("/webhook/tradingview", methods=["POST"])
 def tradingview_webhook():
@@ -152,22 +163,15 @@ def tradingview_webhook():
     if not data:
         return jsonify({"error": "empty payload"}), 400
 
-    signal = {
-        "received_at": datetime.utcnow().isoformat(),
-        "data": data,
-    }
+    signal = {"received_at": datetime.utcnow().isoformat(), "data": data}
     save_signal(signal)
 
-    message = format_signal_message(data)
-
-    loop = asyncio.new_event_loop()
     try:
-        loop.run_until_complete(send_telegram_message(message))
+        message = format_signal_message(data)
+        send_telegram_message_sync(message)
     except Exception as e:
         logger.error(f"Failed to send Telegram message: {e}")
         return jsonify({"status": "error", "reason": str(e)}), 500
-    finally:
-        loop.close()
 
     logger.info(f"Signal forwarded: {data.get('action','?')} {data.get('ticker','?')}")
     return jsonify({"status": "ok"}), 200
@@ -191,21 +195,23 @@ def get_signals():
     return jsonify({"signals": signals[-limit:][::-1], "total": len(signals)})
 
 
+# ── Telegram command handlers ──────────────────────────────────────────────────
+
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     set_bot_active(True)
     signals = load_signals()
-    webhook_url = f"https://{os.environ.get('REPLIT_DOMAINS', 'your-repl.replit.app').split(',')[0]}/webhook/tradingview"
+    domain = os.environ.get("REPLIT_DOMAINS", "your-repl.replit.app").split(",")[0]
+    webhook_url = f"https://{domain}/webhook/tradingview"
     text = (
         "✅ <b>TradingView Signal Bot is ACTIVE</b>\n\n"
         f"📡 <b>Signals received:</b> {len(signals)}\n\n"
-        f"🔗 <b>TradingView Webhook URL:</b>\n<code>{webhook_url}</code>\n\n"
-        "<b>How to set up TradingView alerts:</b>\n"
-        "1. Open an alert in TradingView\n"
-        "2. Set <b>Notifications → Webhook URL</b> to the URL above\n"
-        "3. In the <b>Message</b> field, use JSON:\n"
-        '<code>{"action":"{{strategy.order.action}}","ticker":"{{ticker}}","price":"{{close}}","timeframe":"{{interval}}","strategy":"Your Strategy Name"}</code>\n\n'
+        f"🔗 <b>Webhook URL:</b>\n<code>{webhook_url}</code>\n\n"
+        "<b>TradingView alert message template:</b>\n"
+        '<code>{"action":"{{strategy.order.action}}","ticker":"{{ticker}}",'
+        '"price":"{{close}}","timeframe":"{{interval}}","strategy":"My Strategy",'
+        '"comment":"{{strategy.order.comment}}"}</code>\n\n'
         "<b>Commands:</b>\n"
-        "/start — Activate & show webhook URL\n"
+        "/start — Activate &amp; show webhook URL\n"
         "/stop — Pause signal forwarding\n"
         "/status — Show current status\n"
         "/history — Last 10 signals\n"
@@ -218,7 +224,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     set_bot_active(False)
     await update.message.reply_text(
-        "⏸ <b>Bot PAUSED</b>\n\nSignals will be received but not forwarded to this chat.\nUse /start to resume.",
+        "⏸ <b>Bot PAUSED</b>\n\nSignals will be received but not forwarded.\nUse /start to resume.",
         parse_mode=ParseMode.HTML,
     )
 
@@ -235,13 +241,13 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         last_signal = "—"
 
-    text = (
+    await update.message.reply_text(
         f"📊 <b>Bot Status: {status_emoji}</b>\n\n"
         f"📈 <b>Total signals logged:</b> {len(signals)}\n"
         f"🕐 <b>Last signal time:</b> {last_str}\n"
-        f"📡 <b>Last signal:</b> {last_signal}"
+        f"📡 <b>Last signal:</b> {last_signal}",
+        parse_mode=ParseMode.HTML,
     )
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
 
 async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -258,12 +264,7 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ticker = d.get("ticker", d.get("symbol", "?")).upper()
         price = d.get("price", d.get("close", "?"))
         ts = s["received_at"][:16].replace("T", " ")
-        if action in ("BUY", "LONG"):
-            em = "🟢"
-        elif action in ("SELL", "SHORT"):
-            em = "🔴"
-        else:
-            em = "⚪"
+        em = "🟢" if action in ("BUY", "LONG") else ("🔴" if action in ("SELL", "SHORT") else "⚪")
         lines.append(f"{em} <code>{ts}</code> — <b>{action}</b> <code>{ticker}</code> @ {price}")
 
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
@@ -278,28 +279,51 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await cmd_start(update, context)
 
 
-def run_telegram_bot():
-    app = Application.builder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler("stop", cmd_stop))
-    app.add_handler(CommandHandler("status", cmd_status))
-    app.add_handler(CommandHandler("history", cmd_history))
-    app.add_handler(CommandHandler("clear", cmd_clear))
-    app.add_handler(CommandHandler("help", cmd_help))
+# ── Main async entry point ─────────────────────────────────────────────────────
 
+async def main():
+    global _main_loop, _telegram_app
+
+    _main_loop = asyncio.get_running_loop()
+
+    _telegram_app = Application.builder().token(BOT_TOKEN).build()
+    _telegram_app.add_handler(CommandHandler("start", cmd_start))
+    _telegram_app.add_handler(CommandHandler("stop", cmd_stop))
+    _telegram_app.add_handler(CommandHandler("status", cmd_status))
+    _telegram_app.add_handler(CommandHandler("history", cmd_history))
+    _telegram_app.add_handler(CommandHandler("clear", cmd_clear))
+    _telegram_app.add_handler(CommandHandler("help", cmd_help))
+
+    # Start Flask in a background thread (daemon so it dies with main process)
+    flask_thread = threading.Thread(
+        target=lambda: flask_app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False),
+        daemon=True,
+        name="flask-webhook",
+    )
+    flask_thread.start()
+    logger.info(f"Flask webhook server started on port {PORT}")
+
+    # Run Telegram polling inside the same event loop
     logger.info("Starting Telegram bot polling...")
-    app.run_polling(allowed_updates=Update.ALL_TYPES, close_loop=False)
+    async with _telegram_app:
+        await _telegram_app.initialize()
+        await _telegram_app.start()
+        await _telegram_app.updater.start_polling(
+            allowed_updates=Update.ALL_TYPES,
+            drop_pending_updates=True,
+        )
+        logger.info("Bot is live — polling for Telegram updates")
 
-
-def run_flask():
-    logger.info(f"Starting Flask webhook server on port {PORT}...")
-    flask_app.run(host="0.0.0.0", port=PORT, debug=False)
+        # Keep running forever
+        stop_event = asyncio.Event()
+        try:
+            await stop_event.wait()
+        except (KeyboardInterrupt, SystemExit):
+            pass
+        finally:
+            await _telegram_app.updater.stop()
+            await _telegram_app.stop()
 
 
 if __name__ == "__main__":
-    import threading
-
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-
-    run_telegram_bot()
+    asyncio.run(main())
