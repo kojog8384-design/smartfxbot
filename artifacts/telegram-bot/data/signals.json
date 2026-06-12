@@ -1,1 +1,51 @@
-[]
+[
+  {
+    "received_at": "2026-06-12T01:57:46.864014+00:00",
+    "data": {
+      "action": "BUY",
+      "ticker": "BTCUSDT",
+      "price": "67400"
+    }
+  },
+  {
+    "received_at": "2026-06-12T01:57:46.907725+00:00",
+    "data": {
+      "action": "SELL",
+      "ticker": "DOGEUSDT",
+      "price": "0.15",
+      "strategy": "Moon",
+      "comment": "test",
+      "timeframe": "1H",
+      "swing_high": "0.16",
+      "swing_low": "0.14"
+    }
+  },
+  {
+    "received_at": "2026-06-12T01:57:46.949608+00:00",
+    "data": {
+      "action": "BUY",
+      "ticker": "BTCUSDT",
+      "price": "67450",
+      "strategy": "SMC Confluence",
+      "comment": "BOS + OB retest",
+      "timeframe": "4H",
+      "exchange": "Binance",
+      "swing_high": "70000",
+      "swing_low": "64000"
+    }
+  },
+  {
+    "received_at": "2026-06-12T01:57:47.385477+00:00",
+    "data": {
+      "action": "SELL",
+      "ticker": "BTCUSDT",
+      "price": "67200",
+      "strategy": "Reversal",
+      "comment": "Bearish rejection at OB",
+      "timeframe": "1H",
+      "exchange": "Binance",
+      "swing_high": "68000",
+      "swing_low": "66000"
+    }
+  }
+]

@@ -1,51 +1,42 @@
 {
-  "date": "2026-06-11",
-  "sent_count": 5,
+  "date": "2026-06-12",
+  "sent_count": 1,
   "rejected_count": 3,
   "coins_today": {
-    "BTCUSDT": 1,
-    "ETHUSDT": 1,
-    "XAUUSD": 1,
-    "EURUSD": 1,
-    "GBPUSD": 1
+    "BTCUSDT": 1
   },
   "last_sent_at": {
-    "BTCUSDT": "2026-06-11T01:06:45.344809+00:00",
-    "ETHUSDT": "2026-06-11T01:06:45.552124+00:00",
-    "XAUUSD": "2026-06-11T01:28:44.102186+00:00",
-    "EURUSD": "2026-06-11T01:28:44.311374+00:00",
-    "GBPUSD": "2026-06-11T01:28:44.515658+00:00"
+    "BTCUSDT": "2026-06-12T01:57:47.343149+00:00"
   },
   "sent_log": [
     {
-      "time": "2026-06-11T01:06:45.344809+00:00",
+      "time": "2026-06-12T01:57:47.343149+00:00",
       "ticker": "BTCUSDT",
       "action": "BUY",
-      "score": 96
-    },
-    {
-      "time": "2026-06-11T01:06:45.552124+00:00",
-      "ticker": "ETHUSDT",
-      "action": "SELL",
-      "score": 93
-    },
-    {
-      "time": "2026-06-11T01:28:44.102186+00:00",
-      "ticker": "XAUUSD",
-      "action": "BUY",
       "score": 86
-    },
+    }
+  ],
+  "rejected_log": [
     {
-      "time": "2026-06-11T01:28:44.311374+00:00",
-      "ticker": "EURUSD",
-      "action": "SELL",
-      "score": 86
-    },
-    {
-      "time": "2026-06-11T01:28:44.515658+00:00",
-      "ticker": "GBPUSD",
+      "time": "2026-06-12T01:57:46.864671+00:00",
+      "ticker": "BTCUSDT",
       "action": "BUY",
-      "score": 96
+      "reason": "\u26a0\ufe0f Quality too low: 43/100 (min 60)",
+      "score": 43
+    },
+    {
+      "time": "2026-06-12T01:57:46.908033+00:00",
+      "ticker": "DOGEUSDT",
+      "action": "SELL",
+      "reason": "\ud83d\udeab DOGEUSDT not in watchlist (BTC, ETH, SOL, BNB, XRP, XAUUSD, EURUSD, GBPUSD)",
+      "score": 0
+    },
+    {
+      "time": "2026-06-12T01:57:47.385818+00:00",
+      "ticker": "BTCUSDT",
+      "action": "SELL",
+      "reason": "\u23f3 BTCUSDT cooldown: 4.0h remaining",
+      "score": 0
     }
   ]
 }

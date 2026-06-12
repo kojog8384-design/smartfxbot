@@ -166,9 +166,19 @@ def record_sent(ticker: str, action: str, score: int):
     d["sent_log"].append({"time": now, "ticker": ticker, "action": action, "score": score})
     save_daily(d)
 
-def record_rejected():
+def record_rejected(ticker: str, action: str, reason: str, score: int):
     d = load_daily()
     d["rejected_count"] += 1
+    if "rejected_log" not in d:
+        d["rejected_log"] = []
+    d["rejected_log"].append({
+        "time":   datetime.now(timezone.utc).isoformat(),
+        "ticker": ticker,
+        "action": action,
+        "reason": reason,
+        "score":  score,
+    })
+    d["rejected_log"] = d["rejected_log"][-50:]   # keep last 50 per day
     save_daily(d)
 
 
@@ -616,7 +626,7 @@ def tradingview_webhook():
     action = data.get("action", "?").upper()
 
     if not should_send:
-        record_rejected()
+        record_rejected(ticker, action, reason, score)
         logger.info(f"Signal BLOCKED [{ticker} {action}] — {reason}")
         return jsonify({"status": "filtered", "reason": reason, "score": score}), 200
 
@@ -942,6 +952,69 @@ async def cmd_levels(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
 
 
+async def cmd_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show signals that were blocked today with their rejection reasons."""
+    daily = load_daily()
+    log   = daily.get("rejected_log", [])
+
+    if not log:
+        await update.message.reply_text(
+            "✅ <b>No blocked signals today</b>\n\n"
+            "All incoming signals either passed the filter or none arrived yet.\n"
+            "Use /filter to see current settings.",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    sent     = daily["sent_count"]
+    rejected = daily["rejected_count"]
+    f        = load_filter()
+
+    # Group rejections by reason category for the summary
+    by_reason: dict[str, int] = {}
+    for entry in log:
+        # Shorten the reason to its emoji+category prefix
+        r = entry["reason"]
+        key = (
+            "🚫 Not in watchlist"    if "not in watchlist" in r else
+            "📵 Daily limit hit"     if "Daily limit"      in r else
+            "📵 Per-coin limit"      if "already has"      in r else
+            "⏳ Cooldown"            if "cooldown"         in r else
+            "⚠️ Low quality"         if "Quality too low"  in r else
+            r[:40]
+        )
+        by_reason[key] = by_reason.get(key, 0) + 1
+
+    summary_lines = [f"  {k}: <b>{v}</b>" for k, v in sorted(by_reason.items(), key=lambda x: -x[1])]
+
+    lines = [
+        f"🚫 <b>Blocked Signals Today</b>  —  {_today_utc()}\n",
+        f"📤 Sent: <b>{sent}</b>   🚫 Blocked: <b>{rejected}</b>   "
+        f"Filter: quality ≥ {f['min_quality']} | {f['daily_limit']}/day\n",
+        "<b>Block reasons:</b>",
+        *summary_lines,
+        "",
+        "<b>Last blocked signals:</b>",
+    ]
+
+    # Show up to 15 most recent, newest first
+    for entry in list(reversed(log))[:15]:
+        ts     = entry["time"][:16].replace("T", " ")
+        tk     = entry["ticker"]
+        ac     = entry["action"]
+        reason = entry["reason"]
+        score  = entry["score"]
+        em     = "🟢" if ac in ("BUY","LONG") else ("🔴" if ac in ("SELL","SHORT") else "⚪")
+        score_str = f"  score {score}" if score > 0 else ""
+        lines.append(f"{em} <code>{ts}</code> <b>{ac} {tk}</b>{score_str}\n   <i>{reason}</i>")
+
+    lines.append(
+        "\n<i>Tip: use /setfilter to adjust thresholds — "
+        "e.g. /setfilter min_quality=55 or /setfilter daily_limit=7</i>"
+    )
+    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
+
+
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 async def main():
@@ -956,6 +1029,7 @@ async def main():
         ("filter",      cmd_filter),
         ("setfilter",   cmd_setfilter),
         ("resetdaily",  cmd_resetdaily),
+        ("alerts",      cmd_alerts),
         ("history",     cmd_history),
         ("clear",       cmd_clear),
         ("help",        cmd_help),
