@@ -9,12 +9,12 @@ name = "Telegram Trading Bot"
 paths = ["/"]
 
 [services.development]
-run = "python artifacts/telegram-bot/bot.py"
+run = "python3 artifacts/telegram-bot/bot.py"
 
 [services.production]
 
 [services.production.run]
-args = ["python", "artifacts/telegram-bot/bot.py"]
+args = ["/home/runner/workspace/.pythonlibs/bin/python3", "artifacts/telegram-bot/bot.py"]
 
 [services.production.run.env]
 PORT = "6000"
