@@ -1,0 +1,23 @@
+kind = "api"
+previewPath = "/"
+title = "Telegram Trading Bot"
+version = "1.0.0"
+
+[[services]]
+localPort = 6000
+name = "Telegram Trading Bot"
+paths = ["/"]
+
+[services.development]
+run = "python artifacts/telegram-bot/bot.py"
+
+[services.production]
+
+[services.production.run]
+args = ["python", "artifacts/telegram-bot/bot.py"]
+
+[services.production.run.env]
+PORT = "6000"
+
+[services.production.health.startup]
+path = "/health"
