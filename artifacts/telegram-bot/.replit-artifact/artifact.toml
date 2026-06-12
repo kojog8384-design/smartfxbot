@@ -14,7 +14,7 @@ run = "python3 artifacts/telegram-bot/bot.py"
 [services.production]
 
 [services.production.run]
-args = ["/home/runner/workspace/.pythonlibs/bin/python3", "artifacts/telegram-bot/bot.py"]
+args = ["python3", "artifacts/telegram-bot/bot.py"]
 
 [services.production.run.env]
 PORT = "6000"

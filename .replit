@@ -29,7 +29,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "python artifacts/telegram-bot/bot.py"
+args = "python3 artifacts/telegram-bot/bot.py"
 waitForPort = 6000
 
 [agent]
